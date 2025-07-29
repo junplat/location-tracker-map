@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>위치 히스토리 지도</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .title {
+            text-align: center;
+            color: #333;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .url-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .url-input {
+            padding: 12px 20px;
+            border: 2px solid #4facfe;
+            border-radius: 25px;
+            background: white;
+            color: #333;
+            font-size: 14px;
+            font-weight: 500;
+            min-width: 300px;
+            transition: all 0.3s ease;
+        }
+
+        .url-input:focus {
+            outline: none;
+            box-shadow: 0 0 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .url-input::placeholder {
+            color: #999;
+        }
+
+        .load-button {
+            background: linear-gradient(45deg, #FF6B6B 0%, #FF8E53 100%);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+
+        .load-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+        }
+
+        .load-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+            overflow: hidden;
+            display: inline-block;
+        }
+
+        .file-input-wrapper input[type=file] {
+            position: absolute;
+            left: -9999px;
+        }
+
+        .file-input-label {
+            background: linear-gradient(45deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.3);
+        }
+
+        .file-input-label:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        .sheet-selector {
+            padding: 12px 20px;
+            border: 2px solid #4facfe;
+            border-radius: 25px;
+            background: white;
+            color: #333;
+            font-size: 14px;
+            font-weight: 500;
+            min-width: 150px;
+            transition: all 0.3s ease;
+        }
+
+        .sheet-selector:focus {
+            outline: none;
+            box-shadow: 0 0 20px rgba(79, 172, 254, 0.3);
+        }
+
+        .sheet-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .sheet-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 8px 16px;
+            border-radius: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .sheet-checkbox:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-1px);
+        }
+
+        .sheet-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        .arrow-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px 20px;
+            border-radius: 20px;
+        }
+
+        .arrow-controls label {
+            color: #333;
+            font-weight: 600;
+        }
+
+        .arrow-checkbox {
+            width: 18px;
+            height: 18px;
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+            margin: 20px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        #map {
+            height: 80vh;
+            min-height: 600px;
+        }
+
+        .info-popup {
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.5;
+            max-width: 300px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .info-popup h4 {
+            margin-bottom: 10px;
+            color: #4facfe;
+            font-weight: 600;
+        }
+
+        .info-popup .detail-row {
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .info-popup .detail-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .info-popup .label {
+            font-weight: 500;
+            color: #ccc;
+        }
+
+        .info-popup .value {
+            color: white;
+            font-weight: 600;
+        }
+
+        .status {
+            text-align: center;
+            padding: 20px;
+            color: white;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .sheet-legend {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            max-width: 250px;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 5px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .sheet-controls {
+                justify-content: center;
+            }
+            
+            .map-container {
+                margin: 10px;
+            }
+            
+            .sheet-legend {
+                position: relative;
+                margin-bottom: 10px;
+            }
+        }
+
+        /* 화살표 애니메이션 */
+        /* .arrow-marker {
+            animation: arrowFlow 2s linear infinite;
+        }
+
+        @keyframes arrowFlow {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        } */
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title">📍 위치 히스토리 지도</h1>
+        <div class="controls">
+            <div class="file-input-wrapper">
+                <input type="file" id="csvFile" accept=".csv,.xlsx,.xls" />
+                <label for="csvFile" class="file-input-label">📄 파일 선택 (CSV/XLSX)</label>
+            </div>
+            <div class="arrow-controls">
+                <label for="showArrows">방향 화살표 표시:</label>
+                <input type="checkbox" id="showArrows" class="arrow-checkbox" checked />
+            </div>
+            <div class="sheet-controls" id="sheetControls" style="display: none;">
+                <span style="color: #333; font-weight: 600;">시트 선택:</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="map-container">
+        <div id="map"></div>
+        <div class="sheet-legend" id="legend" style="display: none;">
+            <div class="legend-title">시트별 색상</div>
+            <div id="legendItems"></div>
+        </div>
+    </div>
+
+    <div class="status" id="status">CSV 또는 XLSX 파일을 선택해주세요</div>
+
+    <script>
+        let map;
+        let allData = {};
+        let mapLayers = {};
+        let arrowLayers = {};
+        let colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD'];
+        let currentPopup = null;
+        let showArrows = true;
+
+        // 지도 초기화
+        function initMap() {
+            map = L.map('map').setView([37.5665, 126.9780], 11);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // 거리 계산 함수 (Haversine formula)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // 지구 반지름 (km)
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // 시간 차이 계산 함수
+        function calculateTimeDiff(time1, time2) {
+            const diff = Math.abs(new Date(time2) - new Date(time1));
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            return hours > 0 ? `${hours}시간 ${minutes}분` : `${minutes}분`;
+        }
+
+        // 두 점 사이의 각도 계산 (라디안)
+        function calculateBearing(lat1, lng1, lat2, lng2) {
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const lat1Rad = lat1 * Math.PI / 180;
+            const lat2Rad = lat2 * Math.PI / 180;
+            
+            const y = Math.sin(dLng) * Math.cos(lat2Rad);
+            const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - 
+                     Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+            
+            return Math.atan2(y, x) * 180 / Math.PI - 90;
+        }
+
+        // 두 점 사이의 중간 지점들 계산
+        function getIntermediatePoints(lat1, lng1, lat2, lng2, numPoints = 5) {
+            const points = [];
+            for (let i = 1; i <= numPoints; i++) {
+                const ratio = i / (numPoints + 1);
+                const lat = lat1 + (lat2 - lat1) * ratio;
+                const lng = lng1 + (lng2 - lng1) * ratio;
+                points.push([lat, lng]);
+            }
+            return points;
+        }
+
+        // // 화살표 마커 생성
+        // function createArrowMarker(lat, lng, bearing, color) {
+        //     const arrowIcon = L.divIcon({
+        //         html: `<div style="
+        //             transform: rotate(${bearing}deg);
+        //             color: ${color};
+        //             font-size: 160px;
+        //             font-weight: bold;
+        //             text-shadow: 2px 2px 4px rgba(255,255,255,0.9), -2px -2px 4px rgba(0,0,0,0.3);
+        //             text-align: center;
+        //             line-height: 200px;
+        //             filter: drop-shadow(0 0 8px rgba(0,0,0,0.5));
+        //         ">▶</div>`,
+        //         className: 'arrow-marker',
+        //         iconSize: [200, 200],
+        //         iconAnchor: [100, 100]
+        //     });
+
+        //     const marker = L.marker([lat, lng], { icon: arrowIcon });
+        //     return marker;
+        // }
+
+        function createArrowMarker(lat, lng, bearing, color) {
+            const arrowIcon = L.divIcon({
+                html: `<div style="
+                    transform: rotate(${bearing}deg);
+                    color: ${color};
+                    font-size: 40px;                           // 원본값
+                    font-weight: 900;
+                    text-shadow: 2px 2px 4px rgba(255,255,255,0.9), -2px -2px 4px rgba(0,0,0,0.3), 0 0 2px ${color};  // 원본값
+                    text-align: center;
+                    line-height: 20px;                         // 원본값
+                ">></div>`,
+                className: 'arrow-marker',
+                iconSize: [20, 20],                            // 원본값
+                iconAnchor: [10, 10]                           // 원본값
+            });
+
+            const marker = L.marker([lat, lng], { icon: arrowIcon });
+            return marker;            
+        }  
+
+        // 경로에 화살표 추가
+        function addArrowsToPath(locations, color, layerGroup) {
+            const arrowMarkers = [];
+            
+            for (let i = 0; i < locations.length - 1; i++) {
+                const start = locations[i];
+                const end = locations[i + 1];
+                
+                // 두 점 사이의 거리 확인 (너무 가까우면 화살표 생략)
+                const distance = calculateDistance(start.lat, start.lng, end.lat, end.lng);
+                
+                if (distance > 0.05) { // 50m 이상일 때만 화살표 표시
+                    const bearing = calculateBearing(start.lat, start.lng, end.lat, end.lng);
+                    
+                    // 경로가 충분히 길면 중간에 여러 화살표 표시
+                    if (distance > 0.5) { // 500m 이상
+                        const numArrows = Math.min(Math.floor(distance * 2), 8); // 최대 8개
+                        const intermediatePoints = getIntermediatePoints(
+                            start.lat, start.lng, end.lat, end.lng, numArrows
+                        );
+                        
+                        intermediatePoints.forEach(point => {
+                            const arrowMarker = createArrowMarker(point[0], point[1], bearing, color);
+                            arrowMarkers.push(arrowMarker);
+                            layerGroup.addLayer(arrowMarker);
+                        });
+                    } else {
+                        // 짧은 경로는 중앙에 하나만
+                        const midLat = (start.lat + end.lat) / 2;
+                        const midLng = (start.lng + end.lng) / 2;
+                        const arrowMarker = createArrowMarker(midLat, midLng, bearing, color);
+                        arrowMarkers.push(arrowMarker);
+                        layerGroup.addLayer(arrowMarker);
+                    }
+                }
+            }
+            
+            return arrowMarkers;
+        }
+
+        // 팝업 제거 함수
+        function clearPopup() {
+            if (currentPopup) {
+                map.closePopup(currentPopup);
+                currentPopup = null;
+            }
+        }
+
+        // 데이터 처리 및 지도에 표시
+        function processAndDisplayData(sheetName, data, color) {
+            console.log(`processAndDisplayData 호출: ${sheetName}, 데이터 길이: ${data.length}`);
+            
+            if (!data || data.length === 0) {
+                console.log('데이터가 없음');
+                return;
+            }
+
+            // 컬럼 인덱스 찾기
+            const headers = data[0];
+            console.log('헤더:', headers);
+            
+            const tsIndex = headers.findIndex(h => h && h.toString().toLowerCase().includes('ts_local'));
+            const latIndex = headers.findIndex(h => h && h.toString().toLowerCase().includes('lat'));
+            const lngIndex = headers.findIndex(h => h && h.toString().toLowerCase().includes('lng'));
+
+            console.log(`컬럼 인덱스 - ts_local: ${tsIndex}, lat: ${latIndex}, lng: ${lngIndex}`);
+
+            if (tsIndex === -1 || latIndex === -1 || lngIndex === -1) {
+                console.error(`필요한 컬럼을 찾을 수 없습니다: ${sheetName}`);
+                console.log('사용 가능한 헤더들:', headers);
+                return;
+            }
+
+            // 데이터 파싱 및 정렬
+            const locations = data.slice(1)
+                .map((row, index) => {
+                    const location = {
+                        timestamp: row[tsIndex],
+                        lat: parseFloat(row[latIndex]),
+                        lng: parseFloat(row[lngIndex]),
+                        rawData: row,
+                        headers: headers,
+                        rowIndex: index + 2
+                    };
+                    return location;
+                })
+                .filter(loc => {
+                    const isValid = !isNaN(loc.lat) && !isNaN(loc.lng) && loc.timestamp;
+                    if (!isValid) {
+                        console.log('유효하지 않은 위치 데이터:', loc);
+                    }
+                    return isValid;
+                })
+                .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+            console.log(`유효한 위치 데이터 수: ${locations.length}`);
+            
+            if (locations.length === 0) {
+                console.log('유효한 위치 데이터가 없음');
+                return;
+            }
+
+            console.log('첫 번째 위치:', locations[0]);
+            console.log('마지막 위치:', locations[locations.length - 1]);
+
+            // 레이어 그룹 생성
+            const layerGroup = L.layerGroup();
+            const arrowLayerGroup = L.layerGroup();
+            mapLayers[sheetName] = layerGroup;
+            arrowLayers[sheetName] = arrowLayerGroup;
+
+            // 경로 그리기
+            if (locations.length > 1) {
+                const pathCoords = locations.map(loc => [loc.lat, loc.lng]);
+                console.log('경로 좌표 수:', pathCoords.length);
+                
+                const polyline = L.polyline(pathCoords, {
+                    color: color,
+                    weight: 4,
+                    opacity: 0.8
+                });
+
+                // 경로 세그먼트별 호버 이벤트
+                for (let i = 0; i < locations.length - 1; i++) {
+                    const segmentCoords = [
+                        [locations[i].lat, locations[i].lng],
+                        [locations[i + 1].lat, locations[i + 1].lng]
+                    ];
+                    
+                    const segment = L.polyline(segmentCoords, {
+                        color: color,
+                        weight: 6,
+                        opacity: 0
+                    });
+
+                    const distance = calculateDistance(
+                        locations[i].lat, locations[i].lng,
+                        locations[i + 1].lat, locations[i + 1].lng
+                    );
+                    const timeDiff = calculateTimeDiff(locations[i].timestamp, locations[i + 1].timestamp);
+
+                    segment.on('mouseover', function(e) {
+                        clearPopup();
+                        const popup = L.popup({
+                            closeButton: false,
+                            className: 'info-popup'
+                        })
+                        .setLatLng(e.latlng)
+                        .setContent(`
+                            <div class="info-popup">
+                                <h4>🛣️ 경로 정보</h4>
+                                <div class="detail-row">
+                                    <span class="label">거리:</span>
+                                    <span class="value">${distance.toFixed(2)}km</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">시간차:</span>
+                                    <span class="value">${timeDiff}</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="label">시트:</span>
+                                    <span class="value">${sheetName}</span>
+                                </div>
+                            </div>
+                        `)
+                        .openOn(map);
+                        currentPopup = popup;
+                    });
+
+                    segment.on('mouseout', clearPopup);
+                    layerGroup.addLayer(segment);
+                }
+
+                layerGroup.addLayer(polyline);
+
+                // 화살표 추가
+                if (showArrows) {
+                    addArrowsToPath(locations, color, arrowLayerGroup);
+                }
+            }
+
+            // 핀 추가
+            locations.forEach((location, index) => {
+                const marker = L.circleMarker([location.lat, location.lng], {
+                    radius: 8,
+                    fillColor: color,
+                    color: '#fff',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                });
+
+                marker.on('mouseover', function(e) {
+                    clearPopup();
+                    const detailsHtml = location.headers.map((header, idx) => {
+                        if (location.rawData[idx] && location.rawData[idx].toString().trim()) {
+                            return `
+                                <div class="detail-row">
+                                    <span class="label">${header}:</span>
+                                    <span class="value">${location.rawData[idx]}</span>
+                                </div>
+                            `;
+                        }
+                        return '';
+                    }).join('');
+
+                    const popup = L.popup({
+                        closeButton: false,
+                        className: 'info-popup'
+                    })
+                    .setLatLng(e.latlng)
+                    .setContent(`
+                        <div class="info-popup">
+                            <h4>📍 위치 정보 (Row ${location.rowIndex})</h4>
+                            ${detailsHtml}
+                            <div class="detail-row">
+                                <span class="label">시트:</span>
+                                <span class="value">${sheetName}</span>
+                            </div>
+                        </div>
+                    `)
+                    .openOn(map);
+                    currentPopup = popup;
+                });
+
+                marker.on('mouseout', clearPopup);
+                layerGroup.addLayer(marker);
+            });
+
+            layerGroup.addTo(map);
+            if (showArrows) {
+                arrowLayerGroup.addTo(map);
+            }
+            
+            console.log(`${sheetName} 레이어가 지도에 추가됨`);
+
+            // 지도 범위 조정
+            if (locations.length > 0) {
+                const group = new L.featureGroup(locations.map(loc => 
+                    L.marker([loc.lat, loc.lng])
+                ));
+                map.fitBounds(group.getBounds().pad(0.1));
+                console.log('지도 범위 조정 완료');
+            }
+        }
+
+        // 화살표 표시/숨김 토글
+        function toggleArrows() {
+            showArrows = document.getElementById('showArrows').checked;
+            
+            Object.keys(arrowLayers).forEach(sheetName => {
+                if (showArrows) {
+                    arrowLayers[sheetName].addTo(map);
+                } else {
+                    map.removeLayer(arrowLayers[sheetName]);
+                }
+            });
+        }
+
+        // 시트 체크박스 생성
+        function createSheetControls() {
+            const controlsDiv = document.getElementById('sheetControls');
+            const legendDiv = document.getElementById('legendItems');
+            
+            controlsDiv.innerHTML = '<span style="color: #333; font-weight: 600;">시트 선택:</span>';
+            legendDiv.innerHTML = '';
+
+            Object.keys(allData).forEach((sheetName, index) => {
+                const color = colors[index % colors.length];
+                
+                // 체크박스 생성
+                const checkboxWrapper = document.createElement('div');
+                checkboxWrapper.className = 'sheet-checkbox';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = `sheet_${index}`;
+                checkbox.checked = true;
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        processAndDisplayData(sheetName, allData[sheetName], color);
+                    } else {
+                        if (mapLayers[sheetName]) {
+                            map.removeLayer(mapLayers[sheetName]);
+                        }
+                        if (arrowLayers[sheetName]) {
+                            map.removeLayer(arrowLayers[sheetName]);
+                        }
+                    }
+                    clearPopup();
+                });
+                
+                const label = document.createElement('label');
+                label.htmlFor = `sheet_${index}`;
+                label.textContent = sheetName;
+                label.style.color = color;
+                label.style.fontWeight = '600';
+                
+                checkboxWrapper.appendChild(checkbox);
+                checkboxWrapper.appendChild(label);
+                controlsDiv.appendChild(checkboxWrapper);
+
+                // 범례 아이템 생성
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+                legendItem.innerHTML = `
+                    <div class="legend-color" style="background-color: ${color}"></div>
+                    <span>${sheetName}</span>
+                `;
+                legendDiv.appendChild(legendItem);
+            });
+
+            controlsDiv.style.display = 'flex';
+            document.getElementById('legend').style.display = 'block';
+        }
+
+        // CSV 파일 처리
+        function handleFileSelect(event) {
+            console.log('파일 선택 이벤트 발생');
+            const file = event.target.files[0];
+            if (!file) {
+                console.log('파일이 선택되지 않음');
+                return;
+            }
+
+            console.log('선택된 파일:', file.name, file.size, 'bytes');
+            document.getElementById('status').textContent = '파일 처리 중...';
+            
+            Papa.parse(file, {
+                header: false,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    console.log('파일 파싱 완료. 데이터 행 수:', results.data.length);
+                    console.log('첫 번째 행:', results.data[0]);
+                    
+                    // 기존 데이터와 레이어 초기화
+                    allData = {};
+                    Object.values(mapLayers).forEach(layer => map.removeLayer(layer));
+                    Object.values(arrowLayers).forEach(layer => map.removeLayer(layer));
+                    mapLayers = {};
+                    arrowLayers = {};
+                    
+                    // 시트 구분 로직 개선
+                    const data = results.data;
+                    console.log('전체 데이터 행 수:', data.length);
+                    
+                    // 헤더 행 찾기 함수
+                    function isHeaderRow(row) {
+                        if (!row || row.length === 0) return false;
+                        const rowStr = row.map(cell => cell ? cell.toString().toLowerCase() : '').join('');
+                        return rowStr.includes('ts_local') && rowStr.includes('lat') && rowStr.includes('lng');
+                    }
+                    
+                    // 빈 행 확인 함수
+                    function isEmptyRow(row) {
+                        return !row || row.every(cell => !cell || cell.toString().trim() === '');
+                    }
+                    
+                    // 헤더 행들 찾기
+                    const headerIndices = [];
+                    for (let i = 0; i < data.length; i++) {
+                        if (isHeaderRow(data[i])) {
+                            headerIndices.push(i);
+                            console.log(`헤더 행 발견: ${i}번째 행`, data[i]);
+                        }
+                    }
+                    
+                    console.log('발견된 헤더 행 인덱스들:', headerIndices);
+                    
+                    if (headerIndices.length === 0) {
+                        console.log('헤더를 찾을 수 없습니다. 첫 번째 행을 헤더로 가정합니다.');
+                        allData['Sheet1'] = data;
+                    } else if (headerIndices.length === 1) {
+                        // 단일 시트
+                        console.log('단일 시트로 처리');
+                        allData['Sheet1'] = data;
+                    } else {
+                        // 다중 시트 처리
+                        console.log('다중 시트로 처리');
+                        
+                        for (let i = 0; i < headerIndices.length; i++) {
+                            const startIndex = headerIndices[i];
+                            let endIndex;
+                            
+                            if (i < headerIndices.length - 1) {
+                                // 다음 헤더 직전까지
+                                endIndex = headerIndices[i + 1];
+                            } else {
+                                // 마지막 시트는 파일 끝까지
+                                endIndex = data.length;
+                            }
+                            
+                            // 시트 데이터 추출
+                            let sheetData = data.slice(startIndex, endIndex);
+                            
+                            // 끝에서 빈 행들 제거
+                            while (sheetData.length > 1 && isEmptyRow(sheetData[sheetData.length - 1])) {
+                                sheetData.pop();
+                            }
+                            
+                            if (sheetData.length > 1) { // 헤더 + 최소 1개 데이터 행
+                                const sheetName = `Sheet${i + 1}`;
+                                allData[sheetName] = sheetData;
+                                console.log(`${sheetName} 생성: ${sheetData.length}행`);
+                            }
+                        }
+                    }
+                    
+                    // 대안: 빈 행으로 구분하는 방식도 시도
+                    if (Object.keys(allData).length <= 1 && headerIndices.length === 0) {
+                        console.log('헤더 기반 분할 실패. 빈 행 기반으로 재시도');
+                        allData = {};
+                        
+                        let currentSheet = [];
+                        let sheetIndex = 1;
+                        let hasFoundValidSheet = false;
+                        
+                        for (let i = 0; i < data.length; i++) {
+                            const row = data[i];
+                            
+                            if (isEmptyRow(row)) {
+                                if (currentSheet.length > 0) {
+                                    // 현재 시트에 헤더가 있는지 확인
+                                    const hasHeader = currentSheet.some(r => isHeaderRow(r));
+                                    if (hasHeader || currentSheet.length > 3) { // 헤더가 있거나 충분한 데이터가 있으면
+                                        const sheetName = `Sheet${sheetIndex}`;
+                                        allData[sheetName] = [...currentSheet];
+                                        console.log(`빈 행 기반 ${sheetName} 생성: ${currentSheet.length}행`);
+                                        hasFoundValidSheet = true;
+                                        sheetIndex++;
+                                    }
+                                    currentSheet = [];
+                                }
+                            } else {
+                                currentSheet.push(row);
+                            }
+                        }
+                        
+                        // 마지막 시트 추가
+                        if (currentSheet.length > 0) {
+                            const hasHeader = currentSheet.some(r => isHeaderRow(r));
+                            if (hasHeader || currentSheet.length > 3) {
+                                const sheetName = `Sheet${sheetIndex}`;
+                                allData[sheetName] = [...currentSheet];
+                                console.log(`빈 행 기반 마지막 ${sheetName} 생성: ${currentSheet.length}행`);
+                                hasFoundValidSheet = true;
+                            }
+                        }
+                        
+                        // 그래도 실패하면 전체를 하나의 시트로
+                        if (!hasFoundValidSheet) {
+                            console.log('모든 분할 방식 실패. 전체를 하나의 시트로 처리');
+                            allData['Sheet1'] = data;
+                        }
+                    }
+
+                    console.log('처리된 시트 수:', Object.keys(allData).length);
+                    console.log('시트 이름들:', Object.keys(allData));
+
+                    // 시트 컨트롤 생성
+                    createSheetControls();
+                    
+                    // 모든 시트 데이터 표시
+                    Object.keys(allData).forEach((sheetName, index) => {
+                        const color = colors[index % colors.length];
+                        console.log(`시트 ${sheetName} 처리 시작, 색상: ${color}`);
+                        processAndDisplayData(sheetName, allData[sheetName], color);
+                    });
+
+                    document.getElementById('status').textContent = 
+                        `${Object.keys(allData).length}개 시트 로드 완료`;
+                },
+                error: function(error) {
+                    console.error('CSV 파싱 오류:', error);
+                    document.getElementById('status').textContent = '파일 처리 중 오류가 발생했습니다.';
+                }
+            });
+        }
+
+        // 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            document.getElementById('csvFile').addEventListener('change', handleFileSelect);
+            document.getElementById('showArrows').addEventListener('change', toggleArrows);
+            
+            // 지도 클릭 시 팝업 제거
+            map.on('click', clearPopup);
+        });
+    </script>
+</body>
+</html>
